@@ -1,2 +1,5 @@
 ffmpeg
+ffmpeg-python
 yt_dlp
+firebase_admin
+python-dotenv
