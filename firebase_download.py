@@ -1,12 +1,14 @@
-from firebase_admin import credentials, db
+from firebase_admin import credentials, db, initialize_app
 import yt_dlp
 from dotenv import dotenv_values
+from flask import Flask, jsonify
+
 config = dotenv_values(".env")
 firebase_url = config['FIREBASE_DB']
 
 # Initialize Firebase
-cred = credentials.Certificate("path_to_your_firebase_admin_sdk_key.json")
-firebase_admin.initialize_app(cred, {
+cred = credentials.Certificate('access_key.json')
+initialize_app(cred, {
     'databaseURL': firebase_url
 })
 
@@ -26,14 +28,33 @@ def download_and_convert_to_wav(url, output_name):
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         ydl.download([url])
 
-def listener(event):
-    # Check for new URLs and process them
-    youtube_url = event.data
-    if youtube_url:
-        # Use your download function here
-        download_and_convert_to_wav(youtube_url, "some_output_name")
-        # Remove the URL from the queue if desired
-        event.reference.delete()
+def download_oldest():
+    # Get all items in the queue
+    queue_data = ref.get()
 
-# Listen for updates to the queue
-ref.listen(listener)
+    if queue_data:
+        # Sort the items based on timestamps
+        sorted_items = sorted(queue_data.items(), key=lambda x: x[1].get('timestamps'))
+
+        # Download the oldest URL
+        key, value = sorted_items[0]
+        youtube_url = value.get('youtubeId')
+        if youtube_url:
+            try:
+                download_and_convert_to_wav(youtube_url, f"output_{key}")
+            except Exception as e:
+                ref.child(key).delete()
+                download_next()
+                return
+            # Remove the URL from the queue
+            ref.child(key).delete()
+
+app = Flask(__name__)
+
+@app.route('/download_next', methods=['GET'])
+def download_next():
+    download_oldest()
+    return jsonify({'status': 'success'})
+
+if __name__ == '__main__':
+    app.run(debug=True)
